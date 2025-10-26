@@ -1,0 +1,17 @@
+# YOLO dataset configuration
+# Generated from Custom Vision project: 4bcdbaa6-ede3-4b0e-8dc0-5828d7987fe8
+# Total images: 102
+# Generated on: 2025-10-26 17:28:19
+# Manually split into train/val on 2025-10-26
+
+# Dataset paths (relative to working directory)
+path: yolo_dataset # Putanja od radnog direktorija do dataseta
+train: train/images  # Relativno od path
+val: val/images      # Relativno od path
+
+# Number of classes
+nc: 1
+
+# Class names
+names:
+  0: thaumatopoea pityocampa jajno gnijezdo
