@@ -136,7 +136,7 @@ def pokreni_iteraciju(iteracija_broj, base_model_path=None, resume=False):
         start_epoch = 0
     
     print(f"🎯 Pokretanje treniranja: {run_name}")
-    print("⏱️  Očekivano vrijeme: 45-60 minuta (40 epoha, small model)")
+    print("⏱️  Očekivano vrijeme treniranja: 60-80 minuta za 40 epoha (imgsz=1280)")
     
     try:
         # Izračunaj preostale epohe
@@ -153,8 +153,8 @@ def pokreni_iteraciju(iteracija_broj, base_model_path=None, resume=False):
         results = model.train(
             data='yolo_dataset/data.yaml',
             epochs=remaining_epochs,    # Samo preostale epohe
-            imgsz=832,                  # Kompromis između kvalitete i stabilnosti
-            batch=4,                    # Umjeren batch size
+            imgsz=1280,                 # Optimizirano za velike slike (2560x1709)
+            batch=2,                    # Smanjen zbog većeg imgsz=1280
             project='runs/detect',      # Eksplicitno postavi project
             name=run_name,
             device='cpu',               # CPU za korištenje RAM prednosti
