@@ -63,7 +63,41 @@ def pronadji_najbolji_model(runs_dir="runs/detect"):
     
     return najbolji_model, najbolji_map50
 
-def pokreni_iteraciju(iteracija_broj, base_model_path=None):
+def find_last_checkpoint(run_name):
+    """
+    Pronađi zadnji checkpoint iz prethodnog treniranja
+    """
+    run_path = f'runs/detect/{run_name}'
+    weights_path = f'{run_path}/weights'
+    
+    if not os.path.exists(weights_path):
+        return None, 0
+    
+    # Provjeri postoji li last.pt
+    last_pt = f'{weights_path}/last.pt'
+    if os.path.exists(last_pt):
+        # Čitaj results.csv da vidiš do koje epohe je stigao
+        results_csv = f'{run_path}/results.csv'
+        if os.path.exists(results_csv):
+            try:
+                # Čitaj CSV bez pandas-a
+                with open(results_csv, 'r') as f:
+                    lines = f.readlines()
+                    # Prvi red je header, ostali su epohe
+                    last_epoch = len(lines) - 1  # -1 jer je prvi red header
+                    if last_epoch > 0:
+                        print(f"📊 Pronašao last.pt - zadnja završena epoha: {last_epoch}")
+                        return last_pt, last_epoch
+                    else:
+                        print("⚠️  results.csv je prazan")
+                        return last_pt, 0
+            except Exception as e:
+                print(f"⚠️  Greška pri čitanju results.csv: {e}")
+                return last_pt, 0
+    
+    return None, 0
+
+def pokreni_iteraciju(iteracija_broj, base_model_path=None, resume=False):
     """
     Pokreće jednu iteraciju treniranja.
     """
@@ -80,36 +114,59 @@ def pokreni_iteraciju(iteracija_broj, base_model_path=None):
         device = 'cpu'
         print("⚠️  GPU nije dostupan, koristit će se CPU (sporije)")
     
-    # Odaberi početni model
-    if base_model_path and os.path.exists(base_model_path):
-        print(f"📂 Koristim prethodni najbolji model: {base_model_path}")
-        model = YOLO(base_model_path)
-    else:
-        print("🆕 Počinjem s YOLOv11m pretreniranim modelom (Medium)")
-        model = YOLO('yolo11m.pt')
-    
     # Naziv za ovu iteraciju
     run_name = f'iteracija_{iteracija_broj:02d}'
+    
+    # Provjeri možemo li nastaviti prethodno treniranje
+    checkpoint_path, last_epoch = find_last_checkpoint(run_name)
+    
+    if resume and checkpoint_path and last_epoch > 0:
+        print(f"🔄 NASTAVLJAM treniranje od epohe {last_epoch + 1}")
+        print(f"📂 Koristim checkpoint: {checkpoint_path}")
+        model = YOLO(checkpoint_path)
+        start_epoch = last_epoch
+    else:
+        # Odaberi početni model
+        if base_model_path and os.path.exists(base_model_path):
+            print(f"📂 Koristim prethodni najbolji model: {base_model_path}")
+            model = YOLO(base_model_path)
+        else:
+            print("🆕 Počinjem s YOLOv11m pretreniranim modelom (Medium)")
+            model = YOLO('yolo11m.pt')
+        start_epoch = 0
     
     print(f"🎯 Pokretanje treniranja: {run_name}")
     print("⏱️  Očekivano vrijeme: 1.5-2 sata (40 epoha, umjereno)")
     
     try:
+        # Izračunaj preostale epohe
+        total_epochs = 40
+        remaining_epochs = total_epochs - start_epoch
+        
+        if remaining_epochs <= 0:
+            print(f"✅ Treniranje već završeno! ({start_epoch}/{total_epochs} epoha)")
+            return True, None
+        
+        print(f"📈 Treniram {remaining_epochs} preostalih epoha (od {start_epoch + 1} do {total_epochs})")
+        
         # Pokreni treniranje optimizirano za CPU s punom rezolucijom
         results = model.train(
             data='yolo_dataset/data.yaml',
-            epochs=40,              # Umjereno smanjujem epohe
-            imgsz=832,              # Kompromis između kvalitete i stabilnosti
-            batch=4,                # Umjeren batch size
+            epochs=remaining_epochs,    # Samo preostale epohe
+            imgsz=832,                  # Kompromis između kvalitete i stabilnosti
+            batch=4,                    # Umjeren batch size
+            project='runs/detect',      # Eksplicitno postavi project
             name=run_name,
-            device='cpu',           # CPU za korištenje RAM prednosti
-            patience=12,            # Umjerena patience
-            workers=4,              # Pola od maksimalnih workera
-            cache=True,             # Zadržavam cache - imate 64GB!
-            amp=False,              # Bez mixed precision na CPU
-            save_period=10,         # Spremi checkpoint svakih 10 epoha
-            plots=True,             # Generiraj grafove
-            verbose=True
+            device='cpu',               # CPU za korištenje RAM prednosti
+            patience=12,                # Umjerena patience
+            workers=4,                  # Pola od maksimalnih workera
+            cache=True,                 # Zadržavam cache - imate 64GB!
+            amp=False,                  # Bez mixed precision na CPU
+            save_period=10,             # Spremi checkpoint svakih 10 epoha
+            plots=True,                 # Generiraj grafove
+            verbose=True,
+            exist_ok=True,              # Dozvoli postojanje direktorija
+            resume=False                # Ne koristimo YOLO resume, već naš custom
         )
         
         print(f"✅ Iteracija {iteracija_broj} završena uspješno!")
@@ -127,6 +184,10 @@ def main():
     print("Pristup sličan Azure Custom Vision")
     print("=" * 50)
     
+    # Provjeri treba li nastaviti postojeće treniranje
+    resume_option = input("🔄 Želite li nastaviti postojeće treniranje? (y/n): ").lower().strip()
+    resume = resume_option in ['y', 'yes', 'da']
+    
     # Postavke
     max_iteracija = 5  # Maksimalno 5 iteracija
     min_poboljsanje = 0.01  # Minimalno poboljšanje mAP50 za nastavak
@@ -141,51 +202,41 @@ def main():
             if najbolji_model:
                 print(f"📈 Trenutno najbolji mAP50: {najbolji_map50:.4f}")
                 
-                # Provjeri je li dovoljno poboljšanje
-                if iteracija > 2 and (najbolji_map50 - najbolji_map50_ukupno) < min_poboljsanje:
-                    print(f"⏹️  Prekidam - poboljšanje manje od {min_poboljsanje}")
+                # Provjeri je li poboljšanje dovoljno za nastavak
+                poboljsanje = najbolji_map50 - najbolji_map50_ukupno
+                if poboljsanje < min_poboljsanje:
+                    print(f"⏹️  Poboljšanje ({poboljsanje:.4f}) je manje od minimuma ({min_poboljsanje})")
+                    print("🏁 Završavam iterativno treniranje")
                     break
                 
                 najbolji_map50_ukupno = najbolji_map50
+                base_model = najbolji_model
             else:
-                print("⚠️  Nema prethodnih modela, koristim pretreniran")
-                najbolji_model = None
+                base_model = None
         else:
-            najbolji_model = None
+            base_model = None
         
-        # Pokreni iteraciju
-        uspjeh, results = pokreni_iteraciju(iteracija, najbolji_model)
+        # Pokreni iteraciju s resume opcijom
+        uspjeh, rezultati = pokreni_iteraciju(iteracija, base_model, resume=resume)
+        
+        # Nakon prve iteracije, ne koristimo više resume
+        resume = False
         
         if not uspjeh:
-            print(f"❌ Prekidam zbog greške u iteraciji {iteracija}")
+            print(f"❌ Iteracija {iteracija} neuspješna!")
             break
         
-        print(f"✅ Iteracija {iteracija} završena")
-        
-        # Kratka pauza između iteracija
-        import time
-        time.sleep(2)
+        print(f"✅ Iteracija {iteracija} završena!")
     
-    # Finalni rezultati
-    print(f"\n{'='*60}")
-    print("🏁 ITERATIVNO TRENIRANJE ZAVRŠENO")
-    print(f"{'='*60}")
+    print("\n🎉 ITERATIVNO TRENIRANJE ZAVRŠENO!")
     
-    finalni_model, finalni_map50 = pronadji_najbolji_model()
-    if finalni_model:
-        print(f"🏆 Najbolji model: {finalni_model}")
-        print(f"📊 Finalni mAP50: {finalni_map50:.4f}")
-        
-        # Pokreni finalnu validaciju
-        print("\n🔍 Pokretanje finalne validacije...")
-        try:
-            from validate import validiraj_model_objekt
-            model = YOLO(finalni_model)
-            validiraj_model_objekt(model, 'yolo_dataset/data.yaml')
-        except Exception as e:
-            print(f"⚠️  Greška pri finalnoj validaciji: {e}")
+    # Prikaži finalne rezultate
+    najbolji_model, najbolji_map50 = pronadji_najbolji_model()
+    if najbolji_model:
+        print(f"🏆 Najbolji model: {najbolji_model}")
+        print(f"📊 Najbolji mAP50: {najbolji_map50:.4f}")
     else:
-        print("❌ Nema uspješnih modela")
+        print("⚠️  Nema uspješno treniranih modela")
 
 if __name__ == "__main__":
     main()
