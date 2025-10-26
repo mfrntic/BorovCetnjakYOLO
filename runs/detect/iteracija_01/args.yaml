@@ -2,7 +2,7 @@ task: detect
 mode: train
 model: runs/detect/iteracija_01/weights/last.pt
 data: yolo_dataset/data.yaml
-epochs: 19
+epochs: 26
 time: null
 patience: 12
 batch: 4
