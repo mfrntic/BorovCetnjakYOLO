@@ -131,12 +131,12 @@ def pokreni_iteraciju(iteracija_broj, base_model_path=None, resume=False):
             print(f"📂 Koristim prethodni najbolji model: {base_model_path}")
             model = YOLO(base_model_path)
         else:
-            print("🆕 Počinjem s YOLOv11m pretreniranim modelom (Medium)")
-            model = YOLO('yolo11m.pt')
+            print("🆕 Počinjem s YOLOv11s pretreniranim modelom (Small)")
+            model = YOLO('yolo11s.pt')
         start_epoch = 0
     
     print(f"🎯 Pokretanje treniranja: {run_name}")
-    print("⏱️  Očekivano vrijeme: 1.5-2 sata (40 epoha, umjereno)")
+    print("⏱️  Očekivano vrijeme: 45-60 minuta (40 epoha, small model)")
     
     try:
         # Izračunaj preostale epohe
@@ -158,7 +158,7 @@ def pokreni_iteraciju(iteracija_broj, base_model_path=None, resume=False):
             project='runs/detect',      # Eksplicitno postavi project
             name=run_name,
             device='cpu',               # CPU za korištenje RAM prednosti
-            patience=12,                # Umjerena patience
+            patience=25,                # Povećana patience za small model
             workers=4,                  # Pola od maksimalnih workera
             cache=True,                 # Zadržavam cache - imate 64GB!
             amp=False,                  # Bez mixed precision na CPU
